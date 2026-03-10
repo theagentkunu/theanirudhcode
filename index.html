@@ -52,7 +52,7 @@ section{position:relative;z-index:10}
 /* ═══════════════════════════════════════
    CURSOR
 ═══════════════════════════════════════ */
-#cur,#ring{position:fixed;border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%)}
+#cur,#ring{position:fixed;border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);will-change:transform}
 #cur{width:8px;height:8px;background:var(--gold);box-shadow:0 0 12px var(--gold-g)}
 #ring{width:34px;height:34px;border:1px solid rgba(200,169,81,.4)}
 @media(hover:none){#cur,#ring{display:none}}
@@ -968,9 +968,9 @@ footer{padding:clamp(36px,5.5vw,72px) var(--px);border-top:1px solid var(--line)
 <script>
 /* ═══════════ CURSOR ═══════════ */
 const cur=document.getElementById('cur'),ring=document.getElementById('ring');
-let mx=innerWidth/2,my=innerHeight/2,tx=mx,ty=my;
-document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.cssText+=`left:${mx}px;top:${my}px`});
-(function lc(){tx+=(mx-tx)*.09;ty+=(my-ty)*.09;ring.style.cssText=`left:${tx}px;top:${ty}px`;requestAnimationFrame(lc)})();
+let mx=innerWidth/2,my=innerHeight/2,tx=mx,ty=my,curRaf=false;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;if(!curRaf){curRaf=true;requestAnimationFrame(()=>{cur.style.transform=`translate3d(calc(${mx}px - 50%),calc(${my}px - 50%),0)`;curRaf=false})}});
+(function lc(){tx+=(mx-tx)*.12;ty+=(my-ty)*.12;ring.style.transform=`translate3d(calc(${tx}px - 50%),calc(${ty}px - 50%),0)`;requestAnimationFrame(lc)})();
 
 /* ═══════════ NAV ═══════════ */
 const nav=document.getElementById('nav');
@@ -982,19 +982,24 @@ document.querySelectorAll('.mml').forEach(l=>l.addEventListener('click',()=>mm.c
 
 /* ═══════════ BG CANVAS ═══════════ */
 (()=>{
-  const c=document.getElementById('bg'),ctx=c.getContext('2d');
+  const c=document.getElementById('bg'),ctx=c.getContext('2d',{alpha:false});
   let W,H;
   const rs=()=>{W=c.width=innerWidth;H=c.height=innerHeight};
   rs();window.addEventListener('resize',rs);
-  const pts=Array.from({length:80},()=>({x:Math.random(),y:Math.random(),vx:(Math.random()-.5)*.00022,vy:(Math.random()-.5)*.00022,r:Math.random()*1.5+.4,a:Math.random()*.22+.04}));
-  let fmx=.5,fmy=.5;
-  document.addEventListener('mousemove',e=>{fmx=e.clientX/innerWidth;fmy=e.clientY/innerHeight});
+  const pts=Array.from({length:50},()=>({x:Math.random(),y:Math.random(),vx:(Math.random()-.5)*.00018,vy:(Math.random()-.5)*.00018,r:Math.random()*1.2+.3,a:Math.random()*.18+.04}));
+  let fmx=.5,fmy=.5,lastMouse=0;
+  document.addEventListener('mousemove',e=>{const now=Date.now();if(now-lastMouse<50)return;lastMouse=now;fmx=e.clientX/innerWidth;fmy=e.clientY/innerHeight});
+  let bgFrame=0;
   function fr(){
-    ctx.clearRect(0,0,W,H);
-    const g=ctx.createRadialGradient(W*.4+fmx*W*.1,H*.3+fmy*H*.1,0,W*.5,H*.5,W*.85);
-    g.addColorStop(0,'#0c0a04');g.addColorStop(.5,'#080808');g.addColorStop(1,'#040404');
-    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-    for(let i=0;i<pts.length;i++){for(let j=i+1;j<pts.length;j++){const dx=(pts[i].x-pts[j].x)*W,dy=(pts[i].y-pts[j].y)*H,d=Math.sqrt(dx*dx+dy*dy);if(d<140){ctx.beginPath();ctx.moveTo(pts[i].x*W,pts[i].y*H);ctx.lineTo(pts[j].x*W,pts[j].y*H);ctx.strokeStyle=`rgba(200,169,81,${.04*(1-d/140)})`;ctx.lineWidth=.4;ctx.stroke()}}}
+    bgFrame++;
+    ctx.fillStyle='#070707';ctx.fillRect(0,0,W,H);
+    // only update gradient every 3 frames
+    if(bgFrame%3===0){
+      const g=ctx.createRadialGradient(W*.4+fmx*W*.08,H*.3+fmy*H*.08,0,W*.5,H*.5,W*.8);
+      g.addColorStop(0,'#0c0a04');g.addColorStop(.6,'#080808');g.addColorStop(1,'#040404');
+      ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    }
+    for(let i=0;i<pts.length;i++){for(let j=i+1;j<pts.length;j++){const dx=(pts[i].x-pts[j].x)*W,dy=(pts[i].y-pts[j].y)*H,d=Math.sqrt(dx*dx+dy*dy);if(d<120){ctx.beginPath();ctx.moveTo(pts[i].x*W,pts[i].y*H);ctx.lineTo(pts[j].x*W,pts[j].y*H);ctx.strokeStyle=`rgba(200,169,81,${.035*(1-d/120)})`;ctx.lineWidth=.4;ctx.stroke()}}}
     pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x*W,p.y*H,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(200,169,81,${p.a})`;ctx.fill();p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=1;if(p.x>1)p.x=0;if(p.y<0)p.y=1;if(p.y>1)p.y=0});
     requestAnimationFrame(fr);
   }
@@ -1173,8 +1178,40 @@ function updateNavUI(session){
   }
 }
 
-/* init — restore session on page load */
+/* init — restore session on page load + handle email confirmation redirect */
 (async()=>{
+  // Handle email confirmation / password reset redirect from Supabase
+  const hash = window.location.hash;
+  const params = new URLSearchParams(window.location.search);
+
+  // Supabase puts tokens in the URL hash after email confirmation
+  if(hash && (hash.includes('access_token') || hash.includes('token_hash') || hash.includes('type=signup') || hash.includes('type=recovery'))){
+    const hashParams = new URLSearchParams(hash.replace('#',''));
+    const type = hashParams.get('type');
+    const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token');
+
+    if(accessToken){
+      await _sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    }
+
+    if(type === 'signup' || type === 'email_confirmation'){
+      // Clean the URL
+      history.replaceState(null,'',window.location.pathname);
+      // Show success modal
+      setTimeout(()=>{
+        openAuth('login');
+        showMsg('✓ Email verified! You can now sign in.','ok');
+      }, 400);
+    } else if(type === 'recovery'){
+      history.replaceState(null,'',window.location.pathname);
+      setTimeout(()=>{
+        openAuth('login');
+        showMsg('✓ Password reset confirmed. Please sign in.','ok');
+      }, 400);
+    }
+  }
+
   const { data: { session } } = await _sb.auth.getSession();
   updateNavUI(session);
   _sb.auth.onAuthStateChange((_event, session) => updateNavUI(session));
@@ -1206,7 +1243,10 @@ async function doSignUp(){
   setLoading('signup-btn', true);
   const { error } = await _sb.auth.signUp({
     email, password: pass,
-    options: { data: { first_name: fname, last_name: lname } }
+    options: {
+      data: { first_name: fname, last_name: lname },
+      emailRedirectTo: 'https://theagentkunu.github.io/theanirudhcode/'
+    }
   });
   setLoading('signup-btn', false);
   if(error){ showMsg(error.message); return; }
@@ -1221,7 +1261,7 @@ async function doReset(){
   if(!email){ showMsg('Please enter your email address.'); return; }
   setLoading('reset-btn', true);
   const { error } = await _sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin
+    redirectTo: 'https://theagentkunu.github.io/theanirudhcode/'
   });
   setLoading('reset-btn', false);
   if(error){ showMsg(error.message); return; }
